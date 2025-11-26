@@ -16,6 +16,7 @@ package uri
 
 import (
 	"fmt"
+	"log"
 	"regexp"
 
 	"github.com/GoogleCloudPlatform/k8s-config-connector/pkg/apis/core/v1alpha1"
@@ -27,6 +28,7 @@ func GetServiceMappingAndResourceConfig(smLoader *servicemappingloader.ServiceMa
 	if err != nil {
 		return nil, nil, fmt.Errorf("error getting service mapping: %w", err)
 	}
+	log.Printf("service mapping: %v", sm.Spec.Name)
 	rc, err := matchResourceNameToRC(urlPath, sm)
 	if err != nil {
 		return nil, nil, err
@@ -60,6 +62,16 @@ func matchResourceNameToRCGeneral(uriPath string, sm *v1alpha1.ServiceMapping) (
 			continue
 		}
 		regexIDTemplate := idTemplateToRegex(rc.IDTemplate)
+
+		// log.Printf("ID Template is %v. Name is %v. Kind is %v", rc.IDTemplate, rc.Name, rc.Kind)
+		// // Special case for SecretManagerSecret with locations in path
+		// regexIDTemplate := rc.IDTemplate
+		// if rc.Kind == "SecretManagerSecret" && strings.Contains(uriPath, "/locations/") {
+		// 	// Use a custom regex for regional SecretManagerSecret
+		// 	regexIDTemplate = idTemplateToRegex("projects/{{projects}}/locations/{{locations}}/secrets/{{secrets}}")
+		// } else {
+		// 	regexIDTemplate = idTemplateToRegex(rc.IDTemplate)
+		// }
 		regex, err := regexp.Compile(regexIDTemplate)
 		if err != nil {
 			return nil, fmt.Errorf("error compiling '%v' to regex: %w", regexIDTemplate, err)
