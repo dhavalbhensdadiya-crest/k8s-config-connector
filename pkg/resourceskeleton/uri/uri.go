@@ -18,6 +18,7 @@ import (
 	"fmt"
 	"log"
 	"regexp"
+	"strings"
 
 	"github.com/GoogleCloudPlatform/k8s-config-connector/pkg/apis/core/v1alpha1"
 	"github.com/GoogleCloudPlatform/k8s-config-connector/pkg/servicemapping/servicemappingloader"
@@ -61,17 +62,17 @@ func matchResourceNameToRCGeneral(uriPath string, sm *v1alpha1.ServiceMapping) (
 		if rc.SkipImport {
 			continue
 		}
-		regexIDTemplate := idTemplateToRegex(rc.IDTemplate)
+		//regexIDTemplate := idTemplateToRegex(rc.IDTemplate)
 
 		// log.Printf("ID Template is %v. Name is %v. Kind is %v", rc.IDTemplate, rc.Name, rc.Kind)
 		// // Special case for SecretManagerSecret with locations in path
-		// regexIDTemplate := rc.IDTemplate
-		// if rc.Kind == "SecretManagerSecret" && strings.Contains(uriPath, "/locations/") {
-		// 	// Use a custom regex for regional SecretManagerSecret
-		// 	regexIDTemplate = idTemplateToRegex("projects/{{projects}}/locations/{{locations}}/secrets/{{secrets}}")
-		// } else {
-		// 	regexIDTemplate = idTemplateToRegex(rc.IDTemplate)
-		// }
+		regexIDTemplate := rc.IDTemplate
+		if rc.Kind == "SecretManagerSecret" && strings.Contains(uriPath, "/locations/") {
+			// Use a custom regex for regional SecretManagerSecret
+			regexIDTemplate = idTemplateToRegex("projects/{{projects}}/locations/{{locations}}/secrets/{{secrets}}")
+		} else {
+			regexIDTemplate = idTemplateToRegex(rc.IDTemplate)
+		}
 		regex, err := regexp.Compile(regexIDTemplate)
 		if err != nil {
 			return nil, fmt.Errorf("error compiling '%v' to regex: %w", regexIDTemplate, err)
