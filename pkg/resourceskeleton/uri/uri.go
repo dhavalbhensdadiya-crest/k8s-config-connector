@@ -16,7 +16,6 @@ package uri
 
 import (
 	"fmt"
-	"log"
 	"regexp"
 	"strings"
 
@@ -25,16 +24,13 @@ import (
 )
 
 func GetServiceMappingAndResourceConfig(smLoader *servicemappingloader.ServiceMappingLoader, urlHost, urlPath string) (*v1alpha1.ServiceMapping, *v1alpha1.ResourceConfig, error) {
-	log.Printf("urlPath is %s", urlPath)
-	if strings.Contains(urlHost, "secretmanager.us-central1") {
+	if urlHost == "secretmanager.us-central1.rep.googleapis.com:443" {
 		urlHost = "secretmanager.googleapis.com"
 	}
-	log.Printf("urlHost is %s", urlHost)
 	sm, err := smLoader.GetServiceMappingForServiceHostName(urlHost)
 	if err != nil {
 		return nil, nil, fmt.Errorf("error getting service mapping: %w", err)
 	}
-	log.Printf("service mapping: %v", sm.Spec.Name)
 	rc, err := matchResourceNameToRC(urlPath, sm)
 	if err != nil {
 		return nil, nil, err
@@ -67,13 +63,9 @@ func matchResourceNameToRCGeneral(uriPath string, sm *v1alpha1.ServiceMapping) (
 		if rc.SkipImport {
 			continue
 		}
-		//regexIDTemplate := idTemplateToRegex(rc.IDTemplate)
-
-		// log.Printf("ID Template is %v. Name is %v. Kind is %v", rc.IDTemplate, rc.Name, rc.Kind)
-		// // Special case for SecretManagerSecret with locations in path
+		// Special case for SecretManagerSecret to handle global and regional secrets
 		regexIDTemplate := rc.IDTemplate
 		if rc.Kind == "SecretManagerSecret" && strings.Contains(uriPath, "/locations/") {
-			// Use a custom regex for regional SecretManagerSecret
 			regexIDTemplate = idTemplateToRegex("projects/{{projects}}/locations/{{locations}}/secrets/{{secrets}}")
 		} else {
 			regexIDTemplate = idTemplateToRegex(rc.IDTemplate)

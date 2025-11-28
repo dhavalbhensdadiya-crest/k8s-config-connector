@@ -25,12 +25,14 @@ func DataSourceSecretManagerSecret() *schema.Resource {
 func dataSourceSecretManagerSecretRead(d *schema.ResourceData, meta interface{}) error {
 	var id string
 	var err error
-	_, loc_ok := d.GetOk("location")
-	if loc_ok {
-		id, err = tpgresource.ReplaceVars(d, meta.(*transport_tpg.Config), "projects/{{project}}/locations/{{region}}/secrets/{{secret_id}}")
-	} else {
-		id, err = tpgresource.ReplaceVars(d, meta.(*transport_tpg.Config), "projects/{{project}}/secrets/{{secret_id}}")
-	}
+	// _, loc_ok := d.GetOk("location")
+	// if loc_ok {
+	// 	id, err = tpgresource.ReplaceVars(d, meta.(*transport_tpg.Config), "projects/{{project}}/locations/{{region}}/secrets/{{secret_id}}")
+	// } else {
+	// 	id, err = tpgresource.ReplaceVars(d, meta.(*transport_tpg.Config), "projects/{{project}}/secrets/{{secret_id}}")
+	// }
+
+	id, err = tpgresource.ReplaceVars(d, meta.(*transport_tpg.Config), "projects/{{project}}/secrets/{{secret_id}}")
 	
 	if err != nil {
 		return fmt.Errorf("Error constructing id: %s", err)

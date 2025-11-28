@@ -16,7 +16,6 @@ package servicemappingloader
 
 import (
 	"fmt"
-	"log"
 	"sort"
 
 	"github.com/GoogleCloudPlatform/k8s-config-connector/config/servicemappings"
@@ -39,7 +38,6 @@ func New() (*ServiceMappingLoader, error) {
 	if err != nil {
 		return nil, fmt.Errorf("error loading service mappings: %w", err)
 	}
-	log.Printf("loaded %d service mappings", len(serviceMappings))
 	return NewFromServiceMappings(serviceMappings), nil
 }
 

@@ -348,8 +348,6 @@ func runScenario(ctx context.Context, t *testing.T, testPause bool, fixture reso
 
 				exportResources := []*unstructured.Unstructured{primaryResource}
 
-				h.Log("Exported resources Dhaval test: ", exportResources[0])
-
 				create.SetupNamespacesAndApplyDefaults(h, opt.Create, project)
 
 				opt.CleanupResources = false // We delete explicitly below
@@ -392,8 +390,6 @@ func runScenario(ctx context.Context, t *testing.T, testPause bool, fixture reso
 								t.Fatalf("FAIL: error from normalizer: %v", err)
 							}
 
-							// t.Logf("Dhaval unstructured object is: %v", u)
-
 							got, err := yaml.Marshal(u)
 							if err != nil {
 								t.Fatalf("FAIL: failed to convert KRM object to yaml: %v", err)
@@ -402,11 +398,6 @@ func runScenario(ctx context.Context, t *testing.T, testPause bool, fixture reso
 							test.CompareGoldenObject(t, expectedPath, got)
 						}
 
-						// t.Logf("Dhaval object to export is: %v", obj)
-						// Try to export the resource (and compare against golden file)
-						// if obj.GroupVersionKind().Kind == "SecretManagerSecret" && strings.Contains(obj.GetName(), "regional") {
-						// 	continue
-						// }
 						exportedYAML := exportResource(h, obj, &Expectations{})
 						if exportedYAML != "" {
 							exportedObj := &unstructured.Unstructured{}

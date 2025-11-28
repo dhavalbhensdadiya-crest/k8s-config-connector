@@ -46,11 +46,6 @@ const (
 	ctrlName = "secretmanager-controller"
 )
 
-var (
-	regionalSecretRegex = regexp.MustCompile(`projects/(?P<project>[^/]+)/locations/(?P<location>[^/]+)/secrets/(?P<secret_id>[^/]+)`)
-	globalSecretRegex   = regexp.MustCompile(`projects/(?P<project>[^/]+)/secrets/(?P<secret_id>[^/]+)`)
-)
-
 func init() {
 	registry.RegisterModel(krm.SecretManagerSecretGVK, NewModel)
 }
@@ -122,60 +117,8 @@ func (m *secretModel) AdapterForObject(ctx context.Context, reader client.Reader
 }
 
 func (m *secretModel) AdapterForURL(ctx context.Context, url string) (directbase.Adapter, error) {
+	// TODO: Support URLs
 	return nil, nil
-	var project, location, secretID string
-
-	if match := regionalSecretRegex.FindStringSubmatch(url); match != nil {
-		for i, name := range regionalSecretRegex.SubexpNames() {
-			if i == 0 {
-				continue
-			}
-			switch name {
-			case "project":
-				project = match[i]
-			case "location":
-				location = match[i]
-			case "secret_id":
-				secretID = match[i]
-			}
-		}
-	} else if match := globalSecretRegex.FindStringSubmatch(url); match != nil {
-		for i, name := range globalSecretRegex.SubexpNames() {
-			if i == 0 {
-				continue
-			}
-			switch name {
-			case "project":
-				project = match[i]
-			case "secret_id":
-				secretID = match[i]
-			}
-		}
-		location = "global"
-	} else {
-		return nil, fmt.Errorf("unrecognized secret URL format: %q", url)
-	}
-
-	if project == "" || secretID == "" {
-		return nil, fmt.Errorf("invalid secret URL format: %q", url)
-	}
-
-	externalRef := fmt.Sprintf("projects/%s/secrets/%s", project, secretID)
-	if location != "global" {
-		externalRef = fmt.Sprintf("projects/%s/locations/%s/secrets/%s", project, location, secretID)
-	}
-	adapter_id, err := krm.ParseSecretExternal(externalRef)
-
-	gcpClient, err := m.client(ctx, location)
-	if err != nil {
-		return nil, err
-	}
-
-	return &Adapter{
-		id:        adapter_id,
-		gcpClient: gcpClient,
-		desired:   nil, // desired is nil for an import
-	}, nil
 }
 
 type Adapter struct {
