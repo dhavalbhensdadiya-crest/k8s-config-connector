@@ -122,6 +122,7 @@ func (m *secretModel) AdapterForObject(ctx context.Context, reader client.Reader
 }
 
 func (m *secretModel) AdapterForURL(ctx context.Context, url string) (directbase.Adapter, error) {
+	return nil, nil
 	var project, location, secretID string
 
 	if match := regionalSecretRegex.FindStringSubmatch(url); match != nil {

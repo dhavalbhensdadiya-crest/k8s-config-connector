@@ -85,7 +85,7 @@ func exportResource(h *create.Harness, obj *unstructured.Unstructured, expectati
 
 	case schema.GroupKind{Group: "secretmanager.cnrm.cloud.google.com", Kind: "SecretManagerSecret"}:
 		if found {
-			exportURI = fmt.Sprintf("//secretmanager.googleapis.com/projects/%s/locations/%s/secrets/%s", projectID, location, resourceID)
+			exportURI = fmt.Sprintf("//secretmanager.%s.rep.googleapis.com:443/projects/%s/locations/%s/secrets/%s", location, projectID, location, resourceID)
 		} else {
 			exportURI = "//secretmanager.googleapis.com/projects/" + projectID + "/secrets/" + resourceID
 		}

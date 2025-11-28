@@ -25,6 +25,11 @@ import (
 )
 
 func GetServiceMappingAndResourceConfig(smLoader *servicemappingloader.ServiceMappingLoader, urlHost, urlPath string) (*v1alpha1.ServiceMapping, *v1alpha1.ResourceConfig, error) {
+	log.Printf("urlPath is %s", urlPath)
+	if strings.Contains(urlHost, "secretmanager.us-central1") {
+		urlHost = "secretmanager.googleapis.com"
+	}
+	log.Printf("urlHost is %s", urlHost)
 	sm, err := smLoader.GetServiceMappingForServiceHostName(urlHost)
 	if err != nil {
 		return nil, nil, fmt.Errorf("error getting service mapping: %w", err)

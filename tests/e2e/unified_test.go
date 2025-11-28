@@ -392,7 +392,7 @@ func runScenario(ctx context.Context, t *testing.T, testPause bool, fixture reso
 								t.Fatalf("FAIL: error from normalizer: %v", err)
 							}
 
-							t.Logf("Dhaval unstructured object is: %v", u)
+							// t.Logf("Dhaval unstructured object is: %v", u)
 
 							got, err := yaml.Marshal(u)
 							if err != nil {
@@ -402,28 +402,30 @@ func runScenario(ctx context.Context, t *testing.T, testPause bool, fixture reso
 							test.CompareGoldenObject(t, expectedPath, got)
 						}
 
-						t.Logf("Dhaval object to export is: %v", obj)
+						// t.Logf("Dhaval object to export is: %v", obj)
 						// Try to export the resource (and compare against golden file)
-						// exportedYAML := exportResource(h, obj, &Expectations{})
-						// if exportedYAML != "" {
-						// 	exportedObj := &unstructured.Unstructured{}
-						// 	if err := yaml.Unmarshal([]byte(exportedYAML), exportedObj); err != nil {
-						// 		t.Fatalf("FAIL: error from yaml.Unmarshal: %v", err)
-						// 	}
-
-						// 	// Note: the normalizer for the object has more information, so we reuse that normalizer
-						// 	if err := normalizer.VisitUnstructured(exportedObj); err != nil {
-						// 		t.Fatalf("FAIL: error from normalizer: %v", err)
-						// 	}
-
-						// 	got, err := yaml.Marshal(exportedObj)
-						// 	if err != nil {
-						// 		t.Fatalf("FAIL: failed to convert KRM object to yaml: %v", err)
-						// 	}
-
-						// 	expectedPath := filepath.Join(fixture.SourceDir, fmt.Sprintf("_generated_export_%v.golden", testName))
-						// 	h.CompareGoldenFile(expectedPath, string(got), IgnoreComments)
+						// if obj.GroupVersionKind().Kind == "SecretManagerSecret" && strings.Contains(obj.GetName(), "regional") {
+						// 	continue
 						// }
+						exportedYAML := exportResource(h, obj, &Expectations{})
+						if exportedYAML != "" {
+							exportedObj := &unstructured.Unstructured{}
+							if err := yaml.Unmarshal([]byte(exportedYAML), exportedObj); err != nil {
+								t.Fatalf("FAIL: error from yaml.Unmarshal: %v", err)
+							}
+
+							// Note: the normalizer for the object has more information, so we reuse that normalizer
+							if err := normalizer.VisitUnstructured(exportedObj); err != nil {
+								t.Fatalf("FAIL: error from normalizer: %v", err)
+							}
+
+							got, err := yaml.Marshal(exportedObj)
+							if err != nil {
+								t.Fatalf("FAIL: failed to convert KRM object to yaml: %v", err)
+							}
+							expectedPath := filepath.Join(fixture.SourceDir, fmt.Sprintf("_generated_export_%v.golden", testName))
+							h.CompareGoldenFile(expectedPath, string(got), IgnoreComments)
+						}
 
 					}
 				}

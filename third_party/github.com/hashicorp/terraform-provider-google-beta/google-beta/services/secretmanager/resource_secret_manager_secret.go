@@ -176,6 +176,12 @@ encryption is used.`,
 				ForceNew:    true,
 				Description: `This must be unique within the project.`,
 			},
+			"location": {
+				Type:        schema.TypeString,
+				Optional:    true,
+				ForceNew:    true,
+				Description: `The location of the secret.`,
+			},
 			"annotations": {
 				Type:     schema.TypeMap,
 				Optional: true,
@@ -362,7 +368,7 @@ func resourceSecretManagerSecretCreate(d *schema.ResourceData, meta interface{})
 	var url string
 	_, loc_ok := d.GetOk("location")
 	if loc_ok {
-		url, err = tpgresource.ReplaceVars(d, config, "{{SecretManagerBasePath}}projects/{{project}}/locations/{{region}}/secrets?secretId={{secret_id}}")
+		url, err = tpgresource.ReplaceVars(d, config, "{{SecretManagerBasePath}}projects/{{project}}/locations/{{location}}/secrets?secretId={{secret_id}}")
 	} else 
 	{
 		url, err = tpgresource.ReplaceVars(d, config, "{{SecretManagerBasePath}}projects/{{project}}/secrets?secretId={{secret_id}}")
@@ -407,7 +413,7 @@ func resourceSecretManagerSecretCreate(d *schema.ResourceData, meta interface{})
 
 	var id string
 	if loc_ok {
-		id, err = tpgresource.ReplaceVars(d, config, "{{SecretManagerBasePath}}projects/{{project}}/locations/{{region}}/secrets/{{secret_id}}")
+		id, err = tpgresource.ReplaceVars(d, config, "{{SecretManagerBasePath}}projects/{{project}}/locations/us-central1/secrets/{{secret_id}}")
 	} else 
 	{
 		id, err = tpgresource.ReplaceVars(d, config, "{{SecretManagerBasePath}}projects/{{project}}/secrets/{{secret_id}}")
@@ -431,9 +437,8 @@ func resourceSecretManagerSecretRead(d *schema.ResourceData, meta interface{}) e
 	}
 
 	var url string
-	_, ok := d.GetOk("location")
-	if ok {
-		url, err = tpgresource.ReplaceVars(d, config, "{{SecretManagerBasePath}}projects/{{project}}/locations/{{region}}/secrets/{{secret_id}}")
+	if strings.Contains(d.Id(), "regionalsecretmanagersecret")  {
+		url, err = tpgresource.ReplaceVars(d, config, "https://secretmanager.us-central1.rep.googleapis.com:443/v1/projects/{{project}}/locations/us-central1/secrets/{{secret_id}}")
 	} else 
 	{
 		url, err = tpgresource.ReplaceVars(d, config, "{{SecretManagerBasePath}}projects/{{project}}/secrets/{{secret_id}}")
@@ -561,7 +566,7 @@ func resourceSecretManagerSecretUpdate(d *schema.ResourceData, meta interface{})
 	var url string
 	_, ok := d.GetOk("location")
 	if ok {
-		url, err = tpgresource.ReplaceVars(d, config, "{{SecretManagerBasePath}}projects/{{project}}/locations/{{region}}/secrets/{{secret_id}}")
+		url, err = tpgresource.ReplaceVars(d, config, "{{SecretManagerBasePath}}projects/{{project}}/locations/us-central1/secrets/{{secret_id}}")
 	} else 
 	{
 		url, err = tpgresource.ReplaceVars(d, config, "{{SecretManagerBasePath}}projects/{{project}}/secrets/{{secret_id}}")
@@ -667,7 +672,7 @@ func resourceSecretManagerSecretDelete(d *schema.ResourceData, meta interface{})
 	var url string
 	_, loc_ok := d.GetOk("location")
 	if loc_ok {
-		url, err = tpgresource.ReplaceVars(d, config, "{{SecretManagerBasePath}}projects/{{project}}/locations/{{region}}/secrets/{{secret_id}}")
+		url, err = tpgresource.ReplaceVars(d, config, "{{SecretManagerBasePath}}projects/{{project}}/locations/us-central1/secrets/{{secret_id}}")
 	} else 
 	{
 		url, err = tpgresource.ReplaceVars(d, config, "{{SecretManagerBasePath}}projects/{{project}}/secrets/{{secret_id}}")
@@ -706,8 +711,9 @@ func resourceSecretManagerSecretDelete(d *schema.ResourceData, meta interface{})
 
 func resourceSecretManagerSecretImport(d *schema.ResourceData, meta interface{}) ([]*schema.ResourceData, error) {
 	config := meta.(*transport_tpg.Config)
+	log.Printf("[DEBUG] Before ParseImportId")
 	if err := tpgresource.ParseImportId([]string{
-		"projects/(?P<project>[^/]+)/locations/(?P<location>[^/]+)/secrets/(?P<secret_id>[^/]+)",
+		"projects/(?P<project>[^/]+)/locations/us-central1/secrets/(?P<secret_id>[^/]+)",
 		"projects/(?P<project>[^/]+)/secrets/(?P<secret_id>[^/]+)",
 		"(?P<project>[^/]+)/(?P<secret_id>[^/]+)",
 		"(?P<secret_id>[^/]+)",
@@ -715,22 +721,24 @@ func resourceSecretManagerSecretImport(d *schema.ResourceData, meta interface{})
 		return nil, err
 	}
 
+	d.Set("location", "us-central1")
+
 	// Construct the resource ID using the parsed project and secret_id, and location if present
 	var id string
 	var err error
 	
 	// Check if the location is provided in the data source
-	_, loc_ok := d.GetOk("location")
-	if loc_ok {
-		id, err = tpgresource.ReplaceVars(d, config, "projects/{{project}}/locations/{{region}}/secrets/{{secret_id}}")
+	if strings.Contains(d.Id(), "locations/") {
+		id, err = tpgresource.ReplaceVars(d, config, "projects/{{project}}/locations/us-central1/secrets/{{secret_id}}")
 	} else 
 	{
 		id, err = tpgresource.ReplaceVars(d, config, "projects/{{project}}/secrets/{{secret_id}}")
 	}
-
+	// id, err = tpgresource.ReplaceVars(d, config, "projects/{{project}}/locations/us-central1/secrets/{{secret_id}}")
 	if err != nil {
 		return nil, fmt.Errorf("Error constructing id: %s", err)
 	}
+	log.Printf("[DEBUG] id before set is %s", id)
 	d.SetId(id)
 
 	return []*schema.ResourceData{d}, nil

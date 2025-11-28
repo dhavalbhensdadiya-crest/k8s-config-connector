@@ -67,7 +67,10 @@ func NewFromURI(uri string, smLoader *servicemappingloader.ServiceMappingLoader,
 		return nil, fmt.Errorf("error parsing '%v' as url: %w", uri, err)
 	}
 	log.Printf("Parsed URL host: %v", parsedURL.Host)
-	canonicalHost := trimRegionPrefix(parsedURL.Host) // e.g. "us-central1-aiplatform.googleapis.com" -> "aiplatform.googleapis.com"
+	canonicalHost := parsedURL.Host
+	if !strings.Contains(parsedURL.Host, "secretmanager") {
+		canonicalHost = trimRegionPrefix(parsedURL.Host) // e.g. "us-central1-aiplatform.googleapis.com" -> "aiplatform.googleapis.com"
+	}
 	log.Printf("Canonical URL host: %v", canonicalHost)
 	sm, rc, err := uri2.GetServiceMappingAndResourceConfig(smLoader, canonicalHost, parsedURL.Path)
 	if err != nil {
@@ -76,14 +79,17 @@ func NewFromURI(uri string, smLoader *servicemappingloader.ServiceMappingLoader,
 	tfInfo := terraform.InstanceInfo{
 		Type: rc.Name,
 	}
+	
 	state, err := krmtotf.ImportState(context.Background(), strings.TrimPrefix(parsedURL.Path, "/"), &tfInfo, tfProvider)
 	if err != nil {
 		return nil, fmt.Errorf("error importing resource name to TF state: %w", err)
 	}
+	log.Printf("State is: %v", state)
 	resource, err := tfStateToResource(state, sm, rc, tfProvider)
 	if err != nil {
 		return nil, fmt.Errorf("error creating new resource: %w", err)
 	}
+	log.Printf("NewFromURI: resource: %v", resource)
 	return resource.MarshalAsUnstructured()
 }
 
@@ -128,6 +134,7 @@ func tfStateToResource(state *terraform.InstanceState, sm *v1alpha1.ServiceMappi
 
 	resource.SetGroupVersionKind(gvk)
 	resource.Spec, resource.Status = krmtotf.GetSpecAndStatusFromState(resource, state)
+	log.Printf("resource.Spec is %v", resource.Spec)
 	resource.Labels = krmtotf.GetLabelsFromState(resource, state)
 	resource.Annotations = krmtotf.GetAnnotationsFromState(resource, state)
 	resource.Name = krmtotf.GetNameFromState(resource, state)
