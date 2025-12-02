@@ -65,6 +65,8 @@ fi
 
 protoc --include_imports --include_source_info \
     --experimental_allow_proto3_optional \
+    -I /google/gopath/pkg/mod/github.com/bufbuild/protocompile@v0.14.1/wellknownimports \
+    -I /usr/include \
     -I ${THIRD_PARTY}/googleapis/ \
     -I ${REPO_ROOT}/mockgcp/apis \
     ${REPO_ROOT}/mockgcp/apis/google/apps/cloudidentity/*/*.proto \
@@ -81,6 +83,7 @@ protoc --include_imports --include_source_info \
     ${THIRD_PARTY}/googleapis/google/cloud/*/*/*.proto \
     ${THIRD_PARTY}/googleapis/google/cloud/*/*/*/*.proto \
     ${THIRD_PARTY}/googleapis/google/cloud/*/*/*/*/*.proto \
+    ${THIRD_PARTY}/googleapis/google/cloud/parametermanager/v1/*.proto \
     ${THIRD_PARTY}/googleapis/google/dataflow/*/*.proto \
     ${THIRD_PARTY}/googleapis/google/firestore/*/*.proto \
     ${THIRD_PARTY}/googleapis/google/firestore/*/*/*.proto \
