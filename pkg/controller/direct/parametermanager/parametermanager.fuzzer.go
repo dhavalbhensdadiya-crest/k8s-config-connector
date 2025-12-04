@@ -12,25 +12,24 @@ import (
 )
 
 func init() {
-	fuzztesting.RegisterKRMFuzzer(myNewResourceFuzzer())
+	fuzztesting.RegisterKRMFuzzer(parameterManagerParameterFuzzer())
 }
 
-func myNewResourceFuzzer() fuzztesting.KRMFuzzer {
+func parameterManagerParameterFuzzer() fuzztesting.KRMFuzzer {
 	f := fuzztesting.NewKRMTypedFuzzer(&pb.Parameter{},
 		ParameterManagerParameterSpec_FromProto, ParameterManagerParameterSpec_ToProto,
 		ParameterManagerParameterObservedState_FromProto, ParameterManagerParameterObservedState_ToProto,
 	)
 
-	// Fields that exist in KCC spec but not in the proto
-	// f.SpecFields.Insert(".annotations")
+	f.Unimplemented_LabelsAnnotations(".labels")
+	f.Unimplemented_NotYetTriaged(".policy_member") // Output Only. Not yet figured how to handle this
 
-	// Fields that exist in KCC status but not in the proto
-	// f.StatusFields.Insert(".create_time")
-	// f.StatusFields.Insert(".uid")
+	f.SpecFields.Insert(".format")
+	f.SpecFields.Insert(".kms_key")
 
-	// Fields that are not yet implemented or have known issues
-	f.Unimplemented_NotYetTriaged(".labels")
-	f.Unimplemented_NotYetTriaged(".policy_member")
+	f.StatusFields.Insert(".name")        // Output Only
+	f.StatusFields.Insert(".create_time") // Output Only
+	f.StatusFields.Insert(".update_time") // Output Only
 
 	return f
 }
