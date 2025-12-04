@@ -143,6 +143,7 @@ gen-proto-no-fixup:
 		./third_party/googleapis/mockgcp/cloud/redis/v1beta1/*.proto \
 		./third_party/googleapis/mockgcp/cloud/resourcemanager/v3/*.proto \
 		./third_party/googleapis/mockgcp/cloud/secretmanager/v1/*.proto \
+		./third_party/googleapis/mockgcp/cloud/parametermanager/v1/*.proto \
 		./third_party/googleapis/mockgcp/cloud/securesourcemanager/v1/*.proto \
 		./third_party/googleapis/mockgcp/cloud/security/privateca/v1/*.proto \
 		./third_party/googleapis/mockgcp/cloud/servicedirectory/v1beta1/*.proto \
@@ -157,6 +158,7 @@ gen-proto-no-fixup:
 		./third_party/googleapis/mockgcp/devtools/artifactregistry/v1/*.proto \
 		./third_party/googleapis/mockgcp/devtools/cloudbuild/v1/*.proto	 \
 		./third_party/googleapis/mockgcp/iam/admin/v1/*.proto \
+		./third_party/googleapis/mockgcp/iam/v1/resource_policy_member.proto \
 		./third_party/googleapis/mockgcp/monitoring/dashboard/v1/*.proto \
 		./third_party/googleapis/mockgcp/monitoring/metricsscope/v1/*.proto \
 		./third_party/googleapis/mockgcp/monitoring/v3/*.proto \
