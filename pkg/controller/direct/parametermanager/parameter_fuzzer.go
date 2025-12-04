@@ -36,12 +36,12 @@ func parameterFuzzer() fuzztesting.KRMFuzzer {
 	f.SpecFields.Insert(".format")
 	f.SpecFields.Insert(".kms_key")
 
-	f.StatusFields.Insert(".name")        // Output Only
-	f.StatusFields.Insert(".create_time") // Output Only
-	f.StatusFields.Insert(".update_time") // Output Only
+	f.StatusFields.Insert(".name")          // Output Only
+	f.StatusFields.Insert(".create_time")   // Output Only
+	f.StatusFields.Insert(".update_time")   // Output Only
+	f.StatusFields.Insert(".policy_member") // Output Only
 
 	f.Unimplemented_LabelsAnnotations(".labels")
-	f.Unimplemented_NotYetTriaged(".policy_member") // Output Only. Not yet figured how to handle this
 
 	return f
 }

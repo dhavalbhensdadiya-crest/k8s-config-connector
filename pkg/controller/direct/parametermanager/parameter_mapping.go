@@ -20,6 +20,7 @@
 package parametermanager
 
 import (
+	iampb "cloud.google.com/go/iam/apiv1/iampb"
 	pb "cloud.google.com/go/parametermanager/apiv1/parametermanagerpb"
 	krm "github.com/GoogleCloudPlatform/k8s-config-connector/apis/parametermanager/v1alpha1"
 	"github.com/GoogleCloudPlatform/k8s-config-connector/pkg/controller/direct"
@@ -36,5 +37,25 @@ func ParameterManagerParameterSpec_ToProto(mapCtx *direct.MapContext, in *krm.Pa
 	if in.KMSKeyRef != nil {
 		out.KmsKey = &in.KMSKeyRef.External
 	}
+	return out
+}
+
+func ResourcePolicyMemberObservedState_FromProto(mapCtx *direct.MapContext, in *iampb.ResourcePolicyMember) *krm.ResourcePolicyMemberObservedState {
+	if in == nil {
+		return nil
+	}
+	out := &krm.ResourcePolicyMemberObservedState{}
+	out.IAMPolicyNamePrincipal = direct.LazyPtr(in.GetIamPolicyNamePrincipal())
+	out.IAMPolicyUidPrincipal = direct.LazyPtr(in.GetIamPolicyUidPrincipal())
+	return out
+}
+
+func ResourcePolicyMemberObservedState_ToProto(mapCtx *direct.MapContext, in *krm.ResourcePolicyMemberObservedState) *iampb.ResourcePolicyMember {
+	if in == nil {
+		return nil
+	}
+	out := &iampb.ResourcePolicyMember{}
+	out.IamPolicyNamePrincipal = direct.ValueOf(in.IAMPolicyNamePrincipal)
+	out.IamPolicyUidPrincipal = direct.ValueOf(in.IAMPolicyUidPrincipal)
 	return out
 }

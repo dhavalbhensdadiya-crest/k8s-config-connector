@@ -35,7 +35,7 @@ func ParameterManagerParameterObservedState_FromProto(mapCtx *direct.MapContext,
 	out.CreateTime = direct.StringTimestamp_FromProto(mapCtx, in.GetCreateTime())
 	out.UpdateTime = direct.StringTimestamp_FromProto(mapCtx, in.GetUpdateTime())
 	// MISSING: Labels
-	// MISSING: PolicyMember
+	out.PolicyMember = ResourcePolicyMemberObservedState_FromProto(mapCtx, in.GetPolicyMember())
 	return out
 }
 func ParameterManagerParameterObservedState_ToProto(mapCtx *direct.MapContext, in *krm.ParameterManagerParameterObservedState) *pb.Parameter {
@@ -47,7 +47,7 @@ func ParameterManagerParameterObservedState_ToProto(mapCtx *direct.MapContext, i
 	out.CreateTime = direct.StringTimestamp_ToProto(mapCtx, in.CreateTime)
 	out.UpdateTime = direct.StringTimestamp_ToProto(mapCtx, in.UpdateTime)
 	// MISSING: Labels
-	// MISSING: PolicyMember
+	out.PolicyMember = ResourcePolicyMemberObservedState_ToProto(mapCtx, in.PolicyMember)
 	return out
 }
 func ParameterManagerParameterSpec_FromProto(mapCtx *direct.MapContext, in *pb.Parameter) *krm.ParameterManagerParameterSpec {
@@ -57,7 +57,6 @@ func ParameterManagerParameterSpec_FromProto(mapCtx *direct.MapContext, in *pb.P
 	out := &krm.ParameterManagerParameterSpec{}
 	// MISSING: Labels
 	out.Format = direct.Enum_FromProto(mapCtx, in.GetFormat())
-	// MISSING: PolicyMember
 	if in.GetKmsKey() != "" {
 		out.KMSKeyRef = &refsv1beta1.KMSCryptoKeyRef{External: in.GetKmsKey()}
 	}

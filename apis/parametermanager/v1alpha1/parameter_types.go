@@ -81,7 +81,7 @@ type ParameterManagerParameterObservedState struct {
 	// Output only. [Output-only] policy member strings of a Google Cloud
 	//  resource.
 	// +kcc:proto:field=google.cloud.parametermanager.v1.Parameter.policy_member
-	// PolicyMember *ResourcePolicyMember `json:"policyMember,omitempty"`
+	PolicyMember *ResourcePolicyMemberObservedState `json:"policyMember,omitempty"`
 }
 
 // +genclient
