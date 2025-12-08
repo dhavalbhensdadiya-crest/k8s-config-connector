@@ -34,6 +34,17 @@ type ParameterManagerV1 struct {
 	pb.UnimplementedParameterManagerServer
 }
 
+func (s *MockService) parseKey(key string, input string) (string, error) {
+	parts := strings.Split(input, "/")
+	for i, part := range parts {
+		if part == key && i+1 < len(parts) {
+			// Found the locations part, return the next element which should be the location ID
+			return parts[i+1], nil
+		}
+	}
+	return "", nil
+}
+
 // Creates a new [Parameter][google.cloud.parametermanager.v1.Parameter].
 func (s *ParameterManagerV1) CreateParameter(ctx context.Context, req *pb.CreateParameterRequest) (*pb.Parameter, error) {
 	parameterID := req.ParameterId
@@ -41,19 +52,28 @@ func (s *ParameterManagerV1) CreateParameter(ctx context.Context, req *pb.Create
 		return nil, status.Errorf(codes.InvalidArgument, "ParameterId is required")
 	}
 
-	parent, err := projects.ParseProjectName(req.Parent)
+	projectStr, err := s.parseKey("projects", req.Parent)
 	if err != nil {
 		return nil, err
 	}
 
+	parent, err := projects.ParseProjectIDOrNumber(projectStr)
+	if err != nil {
+		return nil, err
+	}
 	project, err := s.Projects.GetProject(parent)
+	if err != nil {
+		return nil, err
+	}
+
+	location, err := s.parseKey("locations", req.Parent)
 	if err != nil {
 		return nil, err
 	}
 
 	name := parameterName{
 		Project:       project,
-		Location:      "global", // Assuming global for now
+		Location:      location, // Assuming global for now
 		ParameterName: parameterID,
 	}
 	fqn := name.String()
@@ -127,6 +147,12 @@ func (s *ParameterManagerV1) UpdateParameter(ctx context.Context, req *pb.Update
 	}
 	for _, path := range paths {
 		switch path {
+		case "kmsKey":
+			if kmsKey := req.Parameter.GetKmsKey(); kmsKey != "" {
+				updated.KmsKey = &kmsKey
+			} else {
+				updated.KmsKey = nil
+			}
 		case "labels":
 			updated.Labels = req.Parameter.GetLabels()
 		default:
