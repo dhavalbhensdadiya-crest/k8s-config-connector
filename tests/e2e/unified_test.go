@@ -18,6 +18,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"hash/fnv"
 	"io"
@@ -25,6 +26,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"slices"
 	"strconv"
@@ -256,7 +258,8 @@ func testFixturesInSeries(ctx context.Context, t *testing.T, scenarioOptions Sce
 						"kms.cnrm.cloud.google.com",
 						"orgpolicy.cnrm.cloud.google.com",
 						"firestore.cnrm.cloud.google.com",
-						"tags.cnrm.cloud.google.com":
+						"tags.cnrm.cloud.google.com",
+						"run.cnrm.cloud.google.com":
 						// Use SSA
 
 					default:
@@ -272,9 +275,11 @@ func testFixturesInSeries(ctx context.Context, t *testing.T, scenarioOptions Sce
 					return primaryResource, opt
 				}
 
-				// Start gradually, only running for apikeyskey fixtures initially
+				// Start gradually, only running for apikeyskey and tagstagkey fixtures initially
 				forceDirect := false
-				if strings.Contains(fixture.AbsoluteSourceDir, "/apikeyskey/") {
+				if strings.Contains(fixture.TestKey, "/apikeyskey/") {
+					forceDirect = true
+				} else if strings.Contains(fixture.TestKey, "/tagstagkey/") {
 					forceDirect = true
 				}
 
@@ -292,12 +297,14 @@ func testFixturesInSeries(ctx context.Context, t *testing.T, scenarioOptions Sce
 
 				// Run with the fallback controller if we are forcing direct
 				if forceDirect {
-					t.Logf("also running scenario with fallback to old controller for fixture %q", fixture.AbsoluteSourceDir)
+					t.Logf("also running scenario with fallback to old controller for fixture %q", fixture.TestKey)
 					scenarioOptionsWithFallback := scenarioOptions
 					scenarioOptionsWithFallback.FallbackToOldController = true
 					scenarioOptionsWithFallback.ForceDirectController = false
 					runScenario(ctx, t, scenarioOptionsWithFallback, fixture, loadFixture)
 				}
+
+				createDiffs(t, ctx, fixture)
 			})
 		}
 	})
@@ -305,6 +312,64 @@ func testFixturesInSeries(ctx context.Context, t *testing.T, scenarioOptions Sce
 	// Do a cleanup while we can still handle the error.
 	t.Logf("shutting down manager")
 	cancel()
+}
+
+func createDiffs(t *testing.T, ctx context.Context, fixture resourcefixture.ResourceFixture) {
+	dir := fixture.AbsoluteSourceDir
+
+	fileExists := func(p string) bool {
+		if _, err := os.Stat(p); err != nil {
+			if !os.IsNotExist(err) {
+				t.Errorf("error checking if file exists %q: %v", p, err)
+			}
+			return false
+		}
+		return true
+	}
+
+	computeDiff := func(oldP, newP string) string {
+		var out bytes.Buffer
+
+		cmd := exec.CommandContext(ctx, "diff", oldP, newP)
+		cmd.Stdout = &out
+		cmd.Stderr = os.Stderr
+
+		if err := cmd.Run(); err != nil {
+			// Ignore exit code 1 (which means files differ)
+			var exitError *exec.ExitError
+			if errors.As(err, &exitError) && exitError.ExitCode() == 1 {
+				// This is expected when files differ, so do not treat as an error
+			} else {
+				t.Errorf("error running diff command: %v", err)
+			}
+		}
+
+		return out.String()
+	}
+
+	// _http.log
+	{
+		oldPath := filepath.Join(dir, "_http_old_controller.log")
+		newPath := filepath.Join(dir, "_http.log")
+
+		if fileExists(oldPath) && fileExists(newPath) {
+			diff := computeDiff(oldPath, newPath)
+			test.CompareGoldenFile(t, filepath.Join(dir, "_http.diff"), diff)
+		}
+	}
+
+	// _final_object.yaml
+	{
+		oldPath := filepath.Join(dir, "_final_object_old_controller.golden.yaml")
+		// newPath := filepath.Join(dir, "_final_object.yaml")
+		newPath := filepath.Join(dir, "_generated_object_"+fixture.Name+".golden.yaml")
+
+		if fileExists(oldPath) && fileExists(newPath) {
+			diff := computeDiff(oldPath, newPath)
+			test.CompareGoldenFile(t, filepath.Join(dir, "_final_object.diff"), diff)
+		}
+	}
+
 }
 
 type ScenarioOptions struct {
