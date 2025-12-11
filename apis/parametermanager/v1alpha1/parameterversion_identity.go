@@ -20,7 +20,6 @@ import (
 	"strings"
 
 	"github.com/GoogleCloudPlatform/k8s-config-connector/apis/common"
-	refsv1beta1 "github.com/GoogleCloudPlatform/k8s-config-connector/apis/refs/v1beta1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
@@ -47,14 +46,6 @@ func (i *ParameterVersionIdentity) Parent() *ParameterIdentity {
 // New builds a ParameterVersionIdentity from the Config Connector ParameterVersion object.
 func NewParameterVersionIdentity(ctx context.Context, reader client.Reader, obj *ParameterManagerParameterVersion, u *unstructured.Unstructured) (*ParameterVersionIdentity, error) {
 
-	projectID, err := refsv1beta1.ResolveProjectID(ctx, reader, u)
-	if err != nil {
-		return nil, err
-	}
-	if projectID == "" {
-		return nil, fmt.Errorf("cannot resolve project")
-	}
-
 	parameterExternal, err := obj.Spec.ParameterRef.NormalizedExternal(ctx, reader, obj.GetNamespace())
 	if err != nil {
 		return nil, err
@@ -65,7 +56,14 @@ func NewParameterVersionIdentity(ctx context.Context, reader client.Reader, obj 
 	}
 
 	// If `spec.resourceID` is not empty, it means user wants to acquire the object.
-	desiredVersionID := common.ValueOf(obj.Spec.ResourceID)
+	// Get desired ID
+	resourceID := common.ValueOf(obj.Spec.ResourceID)
+	if resourceID == "" {
+		resourceID = obj.GetName()
+	}
+	if resourceID == "" {
+		return nil, fmt.Errorf("cannot resolve resource ID")
+	}
 
 	externalRef := common.ValueOf(obj.Status.ExternalRef)
 	if externalRef != "" {
@@ -82,11 +80,10 @@ func NewParameterVersionIdentity(ctx context.Context, reader client.Reader, obj 
 		if actualParameterIdentity.id != parameterResourceId {
 			return nil, fmt.Errorf("resourceID in spec.parameterRef changed, expect %s, got %s", actualResourceId, parameterResourceId)
 		}
-		if desiredVersionID != "" && actualResourceId != desiredVersionID {
+		if resourceID != "" && actualResourceId != resourceID {
 			return nil, fmt.Errorf("cannot reset `metadata.name` or `spec.resourceID` to %s, since it has already assigned to %s",
-				desiredVersionID, actualResourceId)
+				resourceID, actualResourceId)
 		}
-		desiredVersionID = actualResourceId
 	}
 
 	return &ParameterVersionIdentity{
@@ -94,7 +91,7 @@ func NewParameterVersionIdentity(ctx context.Context, reader client.Reader, obj 
 			parent: parameterParent,
 			id:     parameterResourceId,
 		},
-		id: desiredVersionID,
+		id: resourceID,
 	}, nil
 }
 

@@ -209,12 +209,11 @@ func (a *ParameterAdapter) Update(ctx context.Context, updateOp *directbase.Upda
 	paths := make(sets.Set[string])
 	// Option 1: This option is good for proto that has `field_mask` for output-only, immutable, required/optional.
 	// TODO(contributor): If choosing this option, remove the "Option 2" code.
-	{
-		var err error
-		paths, err = common.CompareProtoMessage(desiredPb, a.actual, common.BasicDiff)
-		if err != nil {
-			return err
-		}
+
+	var err error
+	paths, err = common.CompareProtoMessage(desiredPb, a.actual, common.BasicDiff)
+	if err != nil {
+		return err
 	}
 
 	// // Option 2: manually add all mutable fields.
