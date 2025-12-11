@@ -100,7 +100,7 @@ func (s *ParameterManagerV1) GetParameter(ctx context.Context, req *pb.GetParame
 	fqn := name.String()
 	if err := s.storage.Get(ctx, fqn, &parameter); err != nil {
 		if status.Code(err) == codes.NotFound {
-			return nil, status.Errorf(codes.NotFound, "Parameter [%s] not found.", fqn)
+			return nil, status.Errorf(codes.NotFound, "Resource '%s' was not found.", fqn)
 		}
 		return nil, err
 	}

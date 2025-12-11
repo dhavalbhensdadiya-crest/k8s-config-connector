@@ -19,11 +19,11 @@ X-Xss-Protection: 0
     "errors": [
       {
         "domain": "global",
-        "message": "Parameter [projects/${projectId}/locations/global/parameters/parametermanagerparameter-${uniqueId}] not found.",
+        "message": "Resource 'projects/${projectId}/locations/global/parameters/parametermanagerparameter-${uniqueId}' was not found.",
         "reason": "notFound"
       }
     ],
-    "message": "Parameter [projects/${projectId}/locations/global/parameters/parametermanagerparameter-${uniqueId}] not found.",
+    "message": "Resource 'projects/${projectId}/locations/global/parameters/parametermanagerparameter-${uniqueId}' was not found.",
     "status": "NOT_FOUND"
   }
 }
