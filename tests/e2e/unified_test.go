@@ -224,7 +224,11 @@ func testFixturesInSeries(ctx context.Context, t *testing.T, scenarioOptions Sce
 				}
 			}
 			// TODO(b/259496928): Randomize the resource names for parallel execution when/if needed.
-			t.Run(fixture.Name, func(t *testing.T) {
+			testName := fixture.Name
+			if os.Getenv("USE_FULL_TEST_NAMES") == "true" {
+				testName = "pkg/test/resourcefixture/testdata/" + fixture.TestKey
+			}
+			t.Run(testName, func(t *testing.T) {
 				if skipTestReason != "" {
 					t.Skip(skipTestReason)
 				}
@@ -245,6 +249,7 @@ func testFixturesInSeries(ctx context.Context, t *testing.T, scenarioOptions Sce
 					}
 
 					opt.Create = append(opt.Create, primaryResource)
+					opt.PrimaryResource = primaryResource
 
 					if fixture.Update != nil {
 						u := bytesToUnstructured(t, fixture.Update, uniqueID, project)
@@ -275,12 +280,17 @@ func testFixturesInSeries(ctx context.Context, t *testing.T, scenarioOptions Sce
 					return primaryResource, opt
 				}
 
-				// Start gradually, only running for apikeyskey and tagstagkey fixtures initially
+				// Start gradually, only running for apikeyskey and tags* fixtures initially
 				forceDirect := false
-				if strings.Contains(fixture.TestKey, "/apikeyskey/") {
+				switch fixture.GVK.Kind {
+				case "TagsTagKey", "TagsTagValue", "TagsTagBinding":
 					forceDirect = true
-				} else if strings.Contains(fixture.TestKey, "/tagstagkey/") {
+				case "APIKeysKey":
 					forceDirect = true
+				case "TagsLocationTagBinding":
+					forceDirect = false
+				default:
+					forceDirect = false
 				}
 
 				if os.Getenv("E2E_GCP_TARGET") == "vcr" {
@@ -305,6 +315,13 @@ func testFixturesInSeries(ctx context.Context, t *testing.T, scenarioOptions Sce
 				}
 
 				createDiffs(t, ctx, fixture)
+
+				if !forceDirect && os.Getenv("E2E_GCP_TARGET") != "vcr" {
+					h := &create.Harness{T: t}
+					h.AssertGoldenFileNotFound(filepath.Join(fixture.AbsoluteSourceDir, "_http_old_controller.log"))
+					h.AssertGoldenFileNotFound(filepath.Join(fixture.AbsoluteSourceDir, "_final_object_old_controller.golden.yaml"))
+					h.AssertGoldenFileNotFound(filepath.Join(fixture.AbsoluteSourceDir, "_exported_old_controller.golden.yaml"))
+				}
 			})
 		}
 	})
@@ -315,6 +332,7 @@ func testFixturesInSeries(ctx context.Context, t *testing.T, scenarioOptions Sce
 }
 
 func createDiffs(t *testing.T, ctx context.Context, fixture resourcefixture.ResourceFixture) {
+	h := &create.Harness{T: t, Ctx: ctx}
 	dir := fixture.AbsoluteSourceDir
 
 	fileExists := func(p string) bool {
@@ -354,7 +372,9 @@ func createDiffs(t *testing.T, ctx context.Context, fixture resourcefixture.Reso
 
 		if fileExists(oldPath) && fileExists(newPath) {
 			diff := computeDiff(oldPath, newPath)
-			test.CompareGoldenFile(t, filepath.Join(dir, "_http.diff"), diff)
+			h.CompareGoldenFile(filepath.Join(dir, "_http.diff"), diff)
+		} else {
+			h.AssertGoldenFileNotFound(filepath.Join(dir, "_http.diff"))
 		}
 	}
 
@@ -366,7 +386,9 @@ func createDiffs(t *testing.T, ctx context.Context, fixture resourcefixture.Reso
 
 		if fileExists(oldPath) && fileExists(newPath) {
 			diff := computeDiff(oldPath, newPath)
-			test.CompareGoldenFile(t, filepath.Join(dir, "_final_object.diff"), diff)
+			h.CompareGoldenFile(filepath.Join(dir, "_final_object.diff"), diff)
+		} else {
+			h.AssertGoldenFileNotFound(filepath.Join(dir, "_final_object.diff"))
 		}
 	}
 
@@ -417,7 +439,7 @@ func runScenario(ctx context.Context, t *testing.T, options ScenarioOptions, fix
 
 					// If this test wants us to fallback to the old controller, make sure that there is an old controller
 					if options.FallbackToOldController {
-						primaryGK := opt.Create[0].GroupVersionKind().GroupKind()
+						primaryGK := opt.PrimaryResource.GroupVersionKind().GroupKind()
 						config := resourceconfig.LoadConfig()[primaryGK]
 						if len(config.SupportedControllers) <= 1 {
 							t.Skipf("test is falling back to old controller, but there is no old controller for %v", primaryGK)
@@ -538,7 +560,7 @@ func runScenario(ctx context.Context, t *testing.T, options ScenarioOptions, fix
 
 						// Build a normalizer with the per-service replacements
 						// We should try to get all normalizers into this pattern, over time.
-						serviceReplacements := newObjectWalker()
+						serviceReplacements := newObjectWalker(t)
 						{
 							services := h.RegisteredServices()
 
@@ -581,11 +603,18 @@ func runScenario(ctx context.Context, t *testing.T, options ScenarioOptions, fix
 								fileName = "_final_object_old_controller.golden.yaml"
 							}
 							expectedPath := filepath.Join(fixture.AbsoluteSourceDir, fileName)
-							test.CompareGoldenObject(t, expectedPath, got)
+							h.CompareGoldenObject(expectedPath, got)
 						}
 
 						// Try to export the resource (and compare against golden file)
 						exportedYAML := exportResource(h, obj, &Expectations{})
+
+						fileName := fmt.Sprintf("_generated_export_%v.golden", testName) // TODO: Including the test name creates busywork
+						if options.FallbackToOldController {
+							fileName = "_exported_old_controller.golden.yaml"
+						}
+						expectedPath := filepath.Join(fixture.AbsoluteSourceDir, fileName)
+
 						if exportedYAML != "" {
 							exportedObj := &unstructured.Unstructured{}
 							if err := yaml.Unmarshal([]byte(exportedYAML), exportedObj); err != nil {
@@ -607,13 +636,9 @@ func runScenario(ctx context.Context, t *testing.T, options ScenarioOptions, fix
 								t.Fatalf("FAIL: failed to convert KRM object to yaml: %v", err)
 							}
 
-							fileName := fmt.Sprintf("_generated_export_%v.golden", testName) // TODO: Including the test name creates busywork
-							if options.FallbackToOldController {
-								fileName = "_exported_old_controller.golden.yaml"
-							}
-
-							expectedPath := filepath.Join(fixture.AbsoluteSourceDir, fileName)
 							h.CompareGoldenFile(expectedPath, string(got), IgnoreComments)
+						} else {
+							h.AssertGoldenFileNotFound(expectedPath)
 						}
 					}
 				}
@@ -1102,6 +1127,7 @@ func TestIAM_AllInSeries(t *testing.T) {
 					}
 
 					opt.Create = append(opt.Create, primaryResource)
+					opt.PrimaryResource = primaryResource
 
 					if fixture.Update != nil {
 						u := bytesToUnstructured(t, fixture.Update, uniqueID, project)
@@ -1126,7 +1152,7 @@ func TestIAM_AllInSeries(t *testing.T) {
 func buildControllerOverrides(t *testing.T, scenario create.CreateDeleteTestOptions, options ScenarioOptions) map[string]k8scontrollertype.ReconcilerType {
 	controllerOverrides := make(map[string]k8scontrollertype.ReconcilerType)
 
-	primaryResource := scenario.Create[0]
+	primaryResource := scenario.PrimaryResource
 	primaryGK := primaryResource.GroupVersionKind().GroupKind()
 
 	if options.FallbackToOldController {

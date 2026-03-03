@@ -33,7 +33,6 @@ import (
 	testgcp "github.com/GoogleCloudPlatform/k8s-config-connector/pkg/test/gcp"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/util/sets"
-	"k8s.io/klog/v2"
 )
 
 const PlaceholderTimestamp = "2024-04-01T12:34:56.123456Z"
@@ -62,12 +61,15 @@ func buildKRMNormalizer(t *testing.T, u *unstructured.Unstructured, project test
 		// Deliberately volatile, ignore
 		annotations["test.cnrm.cloud.google.com/reconcile-cookie"] = "(removed)"
 	}
+	if annotations["cnrm.cloud.google.com/last-changed-cookie"] != "" {
+		annotations["cnrm.cloud.google.com/last-changed-cookie"] = "normalized-cookie"
+	}
 	for k, v := range annotations {
 		annotations[k] = replacements.ApplyReplacements(v)
 	}
 	u.SetAnnotations(annotations)
 
-	visitor := newObjectWalker()
+	visitor := newObjectWalker(t)
 
 	// Apply replacements
 	visitor.stringTransforms = append(visitor.stringTransforms, func(path string, s string) string {
@@ -384,8 +386,14 @@ func buildKRMNormalizer(t *testing.T, u *unstructured.Unstructured, project test
 	visitor.replacePaths[".status.creator"] = "test@google.com"
 	visitor.replacePaths[".status.lastModifier"] = "test@google.com"
 
+	// Specific to RunService
+	visitor.replacePaths[".status.terminalCondition.lastTransitionTime"] = "1970-01-01T00:00:00Z"
+
 	// Specific to Workflows
 	visitor.replacePaths[".status.observedState.validateTime"] = "1970-01-01T00:00:00Z"
+
+	// Specific to IAMServiceAccountKey
+	visitor.replacePaths[".status.validAfter"] = "1970-01-01T00:00:00Z"
 
 	// TODO: This should not be needed, we want to avoid churning the kube objects
 	visitor.sortSlices.Insert(".spec.access")
@@ -643,6 +651,8 @@ func setStringAtPath(m map[string]any, atPath string, newValue string) error {
 }
 
 type objectWalker struct {
+	t *testing.T
+
 	removePaths              sets.Set[string]
 	sortSlices               sets.Set[string]
 	sortSlicesBy             []sortSliceBy
@@ -677,8 +687,9 @@ type stringReplacement struct {
 	Replace string
 }
 
-func newObjectWalker() *objectWalker {
+func newObjectWalker(t *testing.T) *objectWalker {
 	return &objectWalker{
+		t:                        t,
 		removePaths:              sets.New[string](),
 		sortSlices:               sets.New[string](),
 		sortAndDeduplicateSlices: sets.New[string](),
@@ -688,7 +699,7 @@ func newObjectWalker() *objectWalker {
 
 func (o *objectWalker) ReplacePath(path string, v any) {
 	if v2, found := o.replacePaths[path]; found && !reflect.DeepEqual(v, v2) {
-		klog.Fatalf("objectWalker has duplicate ReplacePath %q", path)
+		o.t.Fatalf("objectWalker has duplicate ReplacePath %q", path)
 	}
 
 	o.replacePaths[path] = v
@@ -702,7 +713,7 @@ func (o *objectWalker) ReplaceStringValue(oldValue string, newValue string) {
 				// Already have this replacement, no point adding it twice
 				return
 			}
-			klog.Fatalf("objectWalker has duplicate ReplaceStringValue %q=%q and %q=%q", oldValue, replacement.Replace, oldValue, newValue)
+			o.t.Fatalf("FAIL: objectWalker has duplicate ReplaceStringValue %q=%q and %q=%q", oldValue, replacement.Replace, oldValue, newValue)
 		}
 	}
 
@@ -1021,33 +1032,7 @@ func NormalizeHTTPLog(t *testing.T, events test.LogEntries, services mockgcpregi
 	events.RemoveHTTPResponseHeader("Etag")
 	events.RemoveHTTPResponseHeader("Content-Length") // an artifact of encoding
 	events.RemoveHTTPResponseHeader("Cache-Control")  // not really relevant to us
-
-	// Replace any expires headers with (rounded) relative offsets
-	for _, event := range events {
-		expires := event.Response.Header.Get("Expires")
-		if expires == "" {
-			continue
-		}
-
-		if expires == "Mon, 01 Jan 1990 00:00:00 GMT" {
-			// Magic value meaning no-cache; don't change
-			continue
-		}
-
-		expiresTime, err := time.Parse(http.TimeFormat, expires)
-		if err != nil {
-			t.Fatalf("parsing Expires header %q: %v", expires, err)
-		}
-		now := time.Now()
-		delta := expiresTime.Sub(now)
-		if delta > (55 * time.Minute) {
-			delta = delta.Round(time.Hour)
-			event.Response.Header.Set("Expires", fmt.Sprintf("{now+%vh}", delta.Hours()))
-		} else {
-			delta = delta.Round(time.Minute)
-			event.Response.Header.Set("Expires", fmt.Sprintf("{now+%vm}", delta.Minutes()))
-		}
-	}
+	events.RemoveHTTPResponseHeader("Expires")        // not behavioural
 
 	normalizeHTTPResponses(t, services, events)
 
@@ -1063,7 +1048,7 @@ func NormalizeHTTPLog(t *testing.T, events test.LogEntries, services mockgcpregi
 }
 
 func normalizeHTTPResponses(t *testing.T, normalizer mockgcpregistry.Normalizer, events test.LogEntries) {
-	visitor := newObjectWalker()
+	visitor := newObjectWalker(t)
 
 	// If we get detailed info, don't record it - it's not part of the API contract
 	visitor.removePaths.Insert(".error.errors[].debugInfo")
@@ -1184,7 +1169,6 @@ func normalizeHTTPResponses(t *testing.T, normalizer mockgcpregistry.Normalizer,
 
 	// Specific to Sql
 	{
-		visitor.ReplacePath(".ipAddresses[].ipAddress", "10.1.2.3")
 		visitor.ReplacePath(".serverCaCert.cert", "-----BEGIN CERTIFICATE-----\n-----END CERTIFICATE-----\n")
 		visitor.ReplacePath(".serverCaCert.commonName", "common-name")
 		visitor.ReplacePath(".serverCaCert.createTime", "2024-04-01T12:34:56.123456Z")
@@ -1287,7 +1271,7 @@ func normalizeHTTPResponses(t *testing.T, normalizer mockgcpregistry.Normalizer,
 
 	// Run per-service replaceres
 	{
-		replacements := newObjectWalker()
+		replacements := newObjectWalker(t)
 
 		for _, entry := range events {
 			normalizer.ConfigureVisitor(entry.Request.URL, replacements)

@@ -32,6 +32,7 @@ import (
 	"github.com/GoogleCloudPlatform/k8s-config-connector/pkg/controller/kccmanager/nocache"
 	"github.com/GoogleCloudPlatform/k8s-config-connector/pkg/structuredreporting"
 	transport_tpg "github.com/hashicorp/terraform-provider-google-beta/google-beta/transport"
+	"sigs.k8s.io/controller-runtime/pkg/log"
 )
 
 // PreviewInstance runs KCC but intercepts GCP and Kubernetes API calls.
@@ -63,6 +64,14 @@ type PreviewInstanceOptions struct {
 	// (Upstream GCP may be mocked in tests)
 	UpstreamGCPHTTPClient *http.Client
 
+	// UpstreamGCPQPS is the QPS to use when talking to upstream (real) GCP
+	// This limit is per API.
+	UpstreamGCPQPS float64
+
+	// UpstreamGCPBurst is the burst to use when talking to upstream (real) GCP
+	// This limit is per API.
+	UpstreamGCPBurst int
+
 	// Namespace is the namespace of the cluster to preview
 	// If empty, all namespaces are previewed
 	Namespace string
@@ -82,7 +91,7 @@ func NewPreviewInstance(recorder *Recorder, options PreviewInstanceOptions) (*Pr
 		return nil, err
 	}
 
-	hookGCP := newInterceptingGCPClient(upstreamGCPHTTPClient, authorization)
+	hookGCP := newInterceptingGCPClient(upstreamGCPHTTPClient, authorization, options.UpstreamGCPQPS, options.UpstreamGCPBurst)
 
 	i := &PreviewInstance{}
 	i.hookGCP = hookGCP
@@ -100,6 +109,10 @@ var httpRoundTripperKey httpRoundTripperKeyType
 
 // Start starts the PreviewInstance.
 func (i *PreviewInstance) Start(ctx context.Context) error {
+	log := log.FromContext(ctx)
+	filteredLog := filterLogs(log)
+	ctx = klog.NewContext(ctx, filteredLog)
+
 	grpcUnaryInterceptor := i.hookGCP.GRPCUnaryClientInterceptor()
 	gcpHTTPClient := i.hookGCP.HTTPClient()
 
@@ -130,6 +143,7 @@ func (i *PreviewInstance) Start(ctx context.Context) error {
 	}
 
 	kccConfig := kccmanager.Config{}
+	kccConfig.ManagerOptions.Logger = filteredLog
 	if i.Namespace != "" {
 		kccConfig.ManagerOptions.Cache.DefaultNamespaces = map[string]cache.Config{
 			i.Namespace: {},
@@ -186,7 +200,7 @@ func (i *PreviewInstance) Start(ctx context.Context) error {
 				return
 			case <-ticker.C:
 				if i.recorder.DoneReconciling() {
-					klog.Info("All resources reconciled, stopping manager.")
+					log.V(0).Info("All resources reconciled, stopping manager.")
 					cancel() // Cancel the inner context
 					return
 				}

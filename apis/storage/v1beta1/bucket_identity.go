@@ -18,33 +18,66 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/GoogleCloudPlatform/k8s-config-connector/apis/common/parent"
+	"github.com/GoogleCloudPlatform/k8s-config-connector/apis/common/identity"
+	"github.com/GoogleCloudPlatform/k8s-config-connector/pkg/gcpurls"
 )
 
+var (
+	StorageBucketIdentityFormat = gcpurls.Template[StorageBucketIdentity]("storage.googleapis.com", "projects/{project}/buckets/{bucket}")
+)
+
+// StorageBucketURLFormat is the format for the externalRef of a StorageBucket.
+const StorageBucketURLFormat = "projects/{{project}}/buckets/{{bucket}}"
+
+var _ identity.Identity = &StorageBucketIdentity{}
+
+// +k8s:deepcopy-gen=false
 type StorageBucketIdentity struct {
-	id     string
-	parent *parent.ProjectParent
+	Project string
+	Bucket  string
+}
+
+func (i *StorageBucketIdentity) Host() string {
+	return StorageBucketIdentityFormat.Host()
 }
 
 func (i *StorageBucketIdentity) String() string {
-	return i.parent.String() + "/buckets/" + i.id
+	return StorageBucketIdentityFormat.ToString(*i)
 }
 
-func (i *StorageBucketIdentity) ID() string {
-	return i.id
+func (i *StorageBucketIdentity) BucketName() string {
+	return i.Bucket
 }
 
+// Deprecated: prefer FromExternal
 func ParseStorageBucketExternal(external string) (*StorageBucketIdentity, error) {
 	if external == "" {
 		return nil, fmt.Errorf("missing external value")
 	}
-	external = strings.TrimPrefix(external, "/")
-	tokens := strings.Split(external, "/")
-	if len(tokens) != 4 || tokens[0] != "projects" || tokens[2] != "buckets" {
-		return nil, fmt.Errorf("format of StorageBucket external=%q was not known (use projects/{{projectId}}/buckets/{{bucketID}})", external)
+	id := &StorageBucketIdentity{}
+	if err := id.FromExternal(external); err != nil {
+		return nil, err
 	}
-	return &StorageBucketIdentity{
-		parent: &parent.ProjectParent{ProjectID: tokens[1]},
-		id:     tokens[3],
-	}, nil
+	return id, nil
+}
+
+func (i *StorageBucketIdentity) FromExternal(ref string) error {
+	if strings.HasPrefix(ref, "gs://") {
+		bucket := strings.TrimPrefix(ref, "gs://")
+		if !strings.Contains(bucket, "/") {
+			i.Bucket = bucket
+			i.Project = ""
+			return nil
+		}
+	}
+	parsed, match, err := StorageBucketIdentityFormat.Parse(ref)
+	if err != nil {
+		return fmt.Errorf("format of StorageBucket external=%q was not known (use %s): %w", ref, StorageBucketURLFormat, err)
+	}
+	if !match {
+		return fmt.Errorf("format of StorageBucket external=%q was not known (use %s)", ref, StorageBucketURLFormat)
+	}
+
+	*i = *parsed
+	return nil
 }

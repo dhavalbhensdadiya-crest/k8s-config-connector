@@ -72,6 +72,7 @@ SUPPORTED_SERVICES=(
   eventarc.googleapis.com
   file.googleapis.com
   firestore.googleapis.com
+  geminicloudassist.googleapis.com
   gkebackup.googleapis.com
   gkeconnect.googleapis.com
   gkehub.googleapis.com
@@ -85,6 +86,7 @@ SUPPORTED_SERVICES=(
   managedkafka.googleapis.com
   monitoring.googleapis.com
   memcache.googleapis.com
+  memorystore.googleapis.com
   networkconnectivity.googleapis.com
   networksecurity.googleapis.com
   networkservices.googleapis.com
@@ -166,6 +168,7 @@ basic-node-pool|\
 cloudidsendpoint|\
 datafusioninstance|\
 gkehubmembership|\
+memorystore|\
 managedkafkacluster-basic|\
 managedkafkacluster-cmek|\
 managedkafkatopic|\

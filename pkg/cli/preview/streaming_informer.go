@@ -202,7 +202,7 @@ func (i *watchListener) OnWatchEvent(eventType string, obj Object) error {
 		i.objects.OnWatchAdd(obj, i.eventHandlerRegistrations)
 		return nil
 	case "BOOKMARK":
-		klog.Infof("BOOKMARK %+v", obj)
+		klog.V(2).Infof("BOOKMARK %+v", obj)
 		return nil
 	default:
 		return fmt.Errorf("unknown event type: %q", eventType)
@@ -298,9 +298,6 @@ func (i *eventHandlerRegistration) HasSynced() bool {
 func (i *streamingInformer) Get(ctx context.Context, key client.ObjectKey, obj client.Object, opts ...client.GetOption) error {
 	if len(opts) != 0 {
 		return fmt.Errorf("options not implemented: %v", opts)
-	}
-	if !i.WaitForCacheSync(ctx) {
-		return fmt.Errorf("streamingInformer WaitForCacheSync failed")
 	}
 
 	// During preview, each resource is only reconciled once.

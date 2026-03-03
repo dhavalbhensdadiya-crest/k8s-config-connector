@@ -222,7 +222,6 @@ Content-Type: application/json
 
 200 OK
 Content-Type: application/json; charset=UTF-8
-Expires: Mon, 01 Jan 1990 00:00:00 GMT
 Pragma: no-cache
 Server: UploadServer
 Vary: Origin
@@ -314,7 +313,8 @@ X-Xss-Protection: 0
     {
       "name": "tagBindings/%2F%2Fstorage.googleapis.com%2Fprojects%2F_%2Fbuckets%2Fkcctest-${uniqueId}/tagValues/${tagValueID}",
       "parent": "//storage.googleapis.com/projects/_/buckets/kcctest-${uniqueId}",
-      "tagValue": "tagValues/${tagValueID}"
+      "tagValue": "tagValues/${tagValueID}",
+      "tagValueNamespacedName": "${projectId}/test-${uniqueId}/value1"
     }
   ]
 }
@@ -379,7 +379,6 @@ Connection: keep-alive
 
 204 No Content
 Content-Type: application/json
-Expires: Mon, 01 Jan 1990 00:00:00 GMT
 Pragma: no-cache
 Server: UploadServer
 Vary: Origin

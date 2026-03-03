@@ -48,13 +48,11 @@ import (
 	"github.com/GoogleCloudPlatform/k8s-config-connector/mockgcp/mockcloudquota"
 	"github.com/GoogleCloudPlatform/k8s-config-connector/mockgcp/mockcloudtasks"
 	"github.com/GoogleCloudPlatform/k8s-config-connector/mockgcp/mockcomposer"
-	"github.com/GoogleCloudPlatform/k8s-config-connector/mockgcp/mockcontainer"
 	"github.com/GoogleCloudPlatform/k8s-config-connector/mockgcp/mockcontaineranalysis"
 	"github.com/GoogleCloudPlatform/k8s-config-connector/mockgcp/mockdataform"
 	"github.com/GoogleCloudPlatform/k8s-config-connector/mockgcp/mockdataplex"
 	"github.com/GoogleCloudPlatform/k8s-config-connector/mockgcp/mockdatastream"
 	"github.com/GoogleCloudPlatform/k8s-config-connector/mockgcp/mockdocumentai"
-	"github.com/GoogleCloudPlatform/k8s-config-connector/mockgcp/mockedgecontainer"
 	"github.com/GoogleCloudPlatform/k8s-config-connector/mockgcp/mockedgenetwork"
 	"github.com/GoogleCloudPlatform/k8s-config-connector/mockgcp/mockeventarc"
 	"github.com/GoogleCloudPlatform/k8s-config-connector/mockgcp/mockgcpregistry"
@@ -72,9 +70,9 @@ import (
 	"github.com/GoogleCloudPlatform/k8s-config-connector/mockgcp/mockpubsublite"
 	"github.com/GoogleCloudPlatform/k8s-config-connector/mockgcp/mockrecaptchaenterprise"
 	"github.com/GoogleCloudPlatform/k8s-config-connector/mockgcp/mockredis"
+	"github.com/GoogleCloudPlatform/k8s-config-connector/mockgcp/mockresourcemanager"
 	"github.com/GoogleCloudPlatform/k8s-config-connector/mockgcp/mocksecretmanager"
 	"github.com/GoogleCloudPlatform/k8s-config-connector/mockgcp/mocksecuresourcemanager"
-	"github.com/GoogleCloudPlatform/k8s-config-connector/mockgcp/mockservicenetworking"
 	mockspanner "github.com/GoogleCloudPlatform/k8s-config-connector/mockgcp/mockspanner/admin"
 	"github.com/GoogleCloudPlatform/k8s-config-connector/mockgcp/mockspeech"
 	"github.com/GoogleCloudPlatform/k8s-config-connector/mockgcp/mockvmwareengine"
@@ -109,6 +107,8 @@ func NewMockRoundTripper(ctx context.Context, k8sClient client.Client, storage s
 		KubeClient: k8sClient,
 	}
 
+	env.Projects = mockresourcemanager.NewProjectStore(storage)
+
 	workflowEngine, err := workflows.NewEngine(mockHTTPClient)
 	if err != nil {
 		return nil, fmt.Errorf("building workflow engine: %w", err)
@@ -136,9 +136,7 @@ func NewMockRoundTripper(ctx context.Context, k8sClient client.Client, storage s
 	services = append(services, mockmetastore.New(env, storage))
 	services = append(services, mockbigquery.New(env, storage))
 	services = append(services, mockcloudidentity.New(env, storage))
-	services = append(services, mockcontainer.New(env, storage))
 	services = append(services, mockcertificatemanager.New(env, storage))
-	services = append(services, mockedgecontainer.New(env, storage))
 	services = append(services, mockgkemulticloud.New(env, storage))
 	services = append(services, mockmodelarmor.New(env, storage))
 	services = append(services, mocknetworkmanagement.New(env, storage))
@@ -151,7 +149,6 @@ func NewMockRoundTripper(ctx context.Context, k8sClient client.Client, storage s
 	services = append(services, mockprivilegedaccessmanager.New(env, storage))
 	services = append(services, mockredis.New(env, storage))
 	services = append(services, mocksecuresourcemanager.New(env, storage))
-	services = append(services, mockservicenetworking.New(env, storage))
 	services = append(services, mockcloudfunctions.New(env, storage))
 	services = append(services, mockedgenetwork.New(env, storage))
 	services = append(services, mockgkehub.New(env, storage))

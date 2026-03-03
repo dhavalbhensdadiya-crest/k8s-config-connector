@@ -2,13 +2,10 @@
 {
     "mcpServers": {
         "github": {
-            "command": "/server/github-mcp-server",
+            "command": "dev/mcp/github-mcp-server",
             "args": [
                 "stdio"
-            ],
-            "env": {
-		"GITHUB_READ-ONLY": 1
-            }
+            ]
         }
     }
 }

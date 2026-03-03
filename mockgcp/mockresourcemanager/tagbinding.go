@@ -22,9 +22,12 @@ import (
 	"context"
 	"fmt"
 	"net/url"
+	"strconv"
 	"strings"
 
 	lropb "cloud.google.com/go/longrunning/autogen/longrunningpb"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/emptypb"
 
@@ -33,24 +36,56 @@ import (
 )
 
 func (s *TagBindingsServer) normalizeParent(parent string) (string, error) {
-	if suffix, ok := strings.CutPrefix(parent, "//cloudresourcemanager.googleapis.com/projects/"); ok {
-		project, err := s.Projects.GetProjectByIDOrNumber(suffix)
-		if err != nil {
-			return "", err
+	tokens := strings.Split(parent, "/")
+	for i, token := range tokens {
+		if token == "projects" && i+1 < len(tokens) {
+			projectIDOrNumber := tokens[i+1]
+			// Optimisation: check if it is already a number
+			if _, err := strconv.ParseInt(projectIDOrNumber, 10, 64); err == nil {
+				continue
+			}
+			if projectIDOrNumber == "_" {
+				continue
+			}
+
+			project, err := s.Projects.GetProjectByIDOrNumber(projectIDOrNumber)
+			if err != nil {
+				return "", err
+			}
+			tokens[i+1] = fmt.Sprintf("%d", project.Number)
 		}
-		projectWithNumber := fmt.Sprintf("//cloudresourcemanager.googleapis.com/projects/%d", project.Number)
-		return projectWithNumber, nil
-	} else {
-		return parent, nil
 	}
+	return strings.Join(tokens, "/"), nil
 }
 
 func (s *TagBindingsServer) CreateTagBinding(ctx context.Context, req *pb.CreateTagBindingRequest) (*lropb.Operation, error) {
-	tagValue, err := s.tagValues.GetNamespacedTagValue(ctx, &pb.GetNamespacedTagValueRequest{
-		Name: req.GetTagBinding().GetTagValueNamespacedName(),
-	})
-	if err != nil {
-		return nil, err
+	var tagValue *pb.TagValue
+
+	// For methods that support TagValue namespaced name, only one of
+	// tag_value_namespaced_name or tag_value may be filled. Requests with both
+	// fields will be rejected.
+	if req.GetTagBinding().GetTagValue() != "" && req.GetTagBinding().GetTagValueNamespacedName() != "" {
+		return nil, status.Errorf(codes.InvalidArgument, "invalid request: both TagValue and TagValueNamespacedName are set")
+	}
+
+	if req.GetTagBinding().GetTagValue() != "" {
+		found, err := s.tagValues.GetTagValue(ctx, &pb.GetTagValueRequest{
+			Name: req.GetTagBinding().GetTagValue(),
+		})
+		if err != nil {
+			return nil, err
+		}
+		tagValue = found
+	} else if req.GetTagBinding().GetTagValueNamespacedName() != "" {
+		found, err := s.tagValues.GetNamespacedTagValue(ctx, &pb.GetNamespacedTagValueRequest{
+			Name: req.GetTagBinding().GetTagValueNamespacedName(),
+		})
+		if err != nil {
+			return nil, err
+		}
+		tagValue = found
+	} else {
+		return nil, status.Errorf(codes.InvalidArgument, "invalid request: must specify TagValue or TagValueNamespacedName")
 	}
 
 	obj := proto.Clone(req.TagBinding).(*pb.TagBinding)
@@ -118,11 +153,9 @@ func (s *TagBindingsServer) DeleteTagBinding(ctx context.Context, req *pb.Delete
 func (s *TagBindingsServer) ListTagBindings(ctx context.Context, req *pb.ListTagBindingsRequest) (*pb.ListTagBindingsResponse, error) {
 	var err error
 	findParent := req.GetParent()
-	if strings.Contains(req.GetParent(), "//cloudresourcemanager.googleapis.com/projects/") {
-		findParent, err = s.normalizeParent(req.GetParent())
-		if err != nil {
-			return nil, err
-		}
+	findParent, err = s.normalizeParent(req.GetParent())
+	if err != nil {
+		return nil, err
 	}
 
 	var bindings []*pb.TagBinding
@@ -131,8 +164,6 @@ func (s *TagBindingsServer) ListTagBindings(ctx context.Context, req *pb.ListTag
 	if err := s.storage.List(ctx, tagBindingKind, storage.ListOptions{}, func(obj proto.Message) error {
 		tagBinding := obj.(*pb.TagBinding)
 		if tagBinding.Parent == findParent {
-			tagBinding.TagValueNamespacedName = "" // Not returned in list
-
 			bindings = append(bindings, tagBinding)
 		}
 		return nil

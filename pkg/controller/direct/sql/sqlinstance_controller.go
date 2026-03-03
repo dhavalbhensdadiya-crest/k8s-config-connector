@@ -16,16 +16,17 @@ package sql
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"sort"
 	"strings"
 	"time"
 
 	api "google.golang.org/api/sqladmin/v1beta4"
+	"google.golang.org/protobuf/encoding/protojson"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/klog/v2"
-	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	refs "github.com/GoogleCloudPlatform/k8s-config-connector/apis/refs/v1beta1"
 	krm "github.com/GoogleCloudPlatform/k8s-config-connector/apis/sql/v1beta1"
@@ -33,6 +34,7 @@ import (
 	"github.com/GoogleCloudPlatform/k8s-config-connector/pkg/controller/direct"
 	"github.com/GoogleCloudPlatform/k8s-config-connector/pkg/controller/direct/directbase"
 	"github.com/GoogleCloudPlatform/k8s-config-connector/pkg/controller/direct/registry"
+	pb "github.com/GoogleCloudPlatform/k8s-config-connector/pkg/gcpclients/generated/google/cloud/sql/v1beta4"
 	"github.com/GoogleCloudPlatform/k8s-config-connector/pkg/k8s"
 	"github.com/GoogleCloudPlatform/k8s-config-connector/pkg/structuredreporting"
 	"github.com/googleapis/gax-go/v2"
@@ -322,6 +324,21 @@ var supportedUnmanageableFields = map[string]*FieldMetadata{
 			}
 		},
 	},
+	"spec.replicationCluster": {
+		preserveActualValue: func(out *api.DatabaseInstance, actual *api.DatabaseInstance) {
+			out.ReplicationCluster = actual.ReplicationCluster
+		},
+	},
+	"spec.replicationCluster.failoverDrReplicaRef": {
+		preserveActualValue: func(out *api.DatabaseInstance, actual *api.DatabaseInstance) {
+			if actual.ReplicationCluster != nil {
+				if out.ReplicationCluster == nil {
+					out.ReplicationCluster = &api.ReplicationCluster{}
+				}
+				out.ReplicationCluster.FailoverDrReplicaName = actual.ReplicationCluster.FailoverDrReplicaName
+			}
+		},
+	},
 }
 
 var sortedUnmanageableFieldPaths []string
@@ -361,7 +378,9 @@ type sqlInstanceAdapter struct {
 
 var _ directbase.Adapter = &sqlInstanceAdapter{}
 
-func (m *sqlInstanceModel) AdapterForObject(ctx context.Context, kube client.Reader, u *unstructured.Unstructured) (directbase.Adapter, error) {
+func (m *sqlInstanceModel) AdapterForObject(ctx context.Context, op *directbase.AdapterForObjectOperation) (directbase.Adapter, error) {
+	u := op.GetUnstructured()
+	kube := op.Reader
 	obj := &krm.SQLInstance{}
 	if err := runtime.DefaultUnstructuredConverter.FromUnstructured(u.Object, &obj); err != nil {
 		return nil, fmt.Errorf("converting to %T failed: %w", obj, err)
@@ -434,16 +453,14 @@ func (a *sqlInstanceAdapter) Find(ctx context.Context) (bool, error) {
 
 	a.actual = instance
 
-	log := klog.FromContext(ctx).WithName(ctrlName)
+	log := klog.FromContext(ctx)
 	log.V(2).Info("found SQLInstance", "actual", a.actual)
 
 	return true, nil
 }
 
 func (a *sqlInstanceAdapter) Create(ctx context.Context, createOp *directbase.CreateOperation) error {
-	u := createOp.GetUnstructured()
-
-	log := klog.FromContext(ctx).WithName(ctrlName)
+	log := klog.FromContext(ctx)
 	log.V(2).Info("creating SQLInstance", "desired", a.desired)
 
 	if a.projectID == "" {
@@ -454,7 +471,7 @@ func (a *sqlInstanceAdapter) Create(ctx context.Context, createOp *directbase.Cr
 	}
 
 	if a.desired.Spec.CloneSource != nil {
-		return a.cloneInstance(ctx, u, log)
+		return a.cloneInstance(ctx, createOp)
 	} else {
 		// if the maitenance version is provided on CREATE, we need to break up the operation between
 		// a create and a patch with the maintenance version
@@ -464,7 +481,7 @@ func (a *sqlInstanceAdapter) Create(ctx context.Context, createOp *directbase.Cr
 			a.desired.Spec.MaintenanceVersion = nil
 		}
 
-		if err := a.insertInstance(ctx, u, log); err != nil {
+		if err := a.insertInstance(ctx, createOp); err != nil {
 			return err
 		}
 
@@ -492,7 +509,9 @@ func (a *sqlInstanceAdapter) Create(ctx context.Context, createOp *directbase.Cr
 	}
 }
 
-func (a *sqlInstanceAdapter) cloneInstance(ctx context.Context, u *unstructured.Unstructured, log klog.Logger) error {
+func (a *sqlInstanceAdapter) cloneInstance(ctx context.Context, createOp *directbase.CreateOperation) error {
+	log := klog.FromContext(ctx)
+	u := createOp.GetUnstructured()
 	desiredGCP, err := SQLInstanceCloneKRMToGCP(a.desired)
 	if err != nil {
 		return err
@@ -518,10 +537,17 @@ func (a *sqlInstanceAdapter) cloneInstance(ctx context.Context, u *unstructured.
 	if err != nil {
 		return fmt.Errorf("updating SQLInstance status failed: %w", err)
 	}
+
+	if err := a.SetLastModifiedCookie(ctx, createOp, created); err != nil {
+		return err
+	}
+
 	return setStatus(u, status)
 }
 
-func (a *sqlInstanceAdapter) insertInstance(ctx context.Context, u *unstructured.Unstructured, log klog.Logger) error {
+func (a *sqlInstanceAdapter) insertInstance(ctx context.Context, createOp *directbase.CreateOperation) error {
+	log := klog.FromContext(ctx)
+	u := createOp.GetUnstructured()
 	desiredGCP, err := SQLInstanceKRMToGCP(a.desired, a.actual, a.fieldMeta)
 	if err != nil {
 		return err
@@ -567,6 +593,11 @@ func (a *sqlInstanceAdapter) insertInstance(ctx context.Context, u *unstructured
 	if err != nil {
 		return fmt.Errorf("updating SQLInstance status failed: %w", err)
 	}
+
+	if err := a.SetLastModifiedCookie(ctx, createOp, created); err != nil {
+		return err
+	}
+
 	return setStatus(u, status)
 }
 
@@ -576,6 +607,15 @@ func (a *sqlInstanceAdapter) Update(ctx context.Context, updateOp *directbase.Up
 	log := klog.FromContext(ctx)
 	log.V(2).Info("updating SQLInstance", "desired", a.desired)
 
+	if upToDate, err := a.CompareLastModifiedCookie(ctx, updateOp, a.actual); err == nil && upToDate {
+		log.V(2).Info("resource is up to date (cookie match)", "name", a.resourceID)
+		status, err := SQLInstanceStatusGCPToKRM(a.actual)
+		if err != nil {
+			return fmt.Errorf("updating SQLInstance status failed: %w", err)
+		}
+		return setStatus(u, status)
+	}
+
 	// First, handle database version updates
 	if a.desired.Spec.DatabaseVersion != nil && *a.desired.Spec.DatabaseVersion != a.actual.DatabaseVersion {
 		newVersionDb := &api.DatabaseInstance{
@@ -583,7 +623,7 @@ func (a *sqlInstanceAdapter) Update(ctx context.Context, updateOp *directbase.Up
 		}
 
 		{
-			report := &structuredreporting.Diff{}
+			report := &structuredreporting.Diff{Object: u}
 			report.AddField(".databaseVersion", a.actual.DatabaseVersion, a.desired.Spec.DatabaseVersion)
 			structuredreporting.ReportDiff(ctx, report)
 		}
@@ -610,11 +650,11 @@ func (a *sqlInstanceAdapter) Update(ctx context.Context, updateOp *directbase.Up
 	if editionField, ok := a.fieldMeta["spec.settings.edition"]; ok {
 		isEditionUnmanaged = editionField.isUnmanaged
 	}
-	isSettingsUnamanged := false
+	isSettingsUnmanaged := false
 	if settingsField, ok := a.fieldMeta["spec.settings"]; ok {
-		isSettingsUnamanged = settingsField.isUnmanaged
+		isSettingsUnmanaged = settingsField.isUnmanaged
 	}
-	isEditionUnmanaged = isEditionUnmanaged || isSettingsUnamanged
+	isEditionUnmanaged = isEditionUnmanaged || isSettingsUnmanaged
 
 	// Next, handle database edition updates
 	if !isEditionUnmanaged {
@@ -623,7 +663,12 @@ func (a *sqlInstanceAdapter) Update(ctx context.Context, updateOp *directbase.Up
 			desiredEdition = *a.desired.Spec.Settings.Edition
 		}
 
-		if desiredEdition != a.actual.Settings.Edition {
+		actualEdition := "ENTERPRISE" // Default value
+		if a.actual.Settings.Edition != "" {
+			actualEdition = a.actual.Settings.Edition
+		}
+
+		if desiredEdition != actualEdition {
 			newEditionDb := &api.DatabaseInstance{
 				Settings: &api.Settings{
 					Edition: direct.ValueOf(&desiredEdition),
@@ -635,8 +680,8 @@ func (a *sqlInstanceAdapter) Update(ctx context.Context, updateOp *directbase.Up
 			}
 
 			{
-				report := &structuredreporting.Diff{}
-				report.AddField(".settings.edition", a.actual.Settings.Edition, desiredEdition)
+				report := &structuredreporting.Diff{Object: u}
+				report.AddField(".settings.edition", actualEdition, desiredEdition)
 				structuredreporting.ReportDiff(ctx, report)
 			}
 
@@ -671,7 +716,7 @@ func (a *sqlInstanceAdapter) Update(ctx context.Context, updateOp *directbase.Up
 		}
 
 		{
-			report := &structuredreporting.Diff{}
+			report := &structuredreporting.Diff{Object: u}
 			report.AddField(".maintenanceVersion", a.actual.MaintenanceVersion, a.desired.Spec.MaintenanceVersion)
 			structuredreporting.ReportDiff(ctx, report)
 		}
@@ -702,6 +747,7 @@ func (a *sqlInstanceAdapter) Update(ctx context.Context, updateOp *directbase.Up
 
 	if instanceDiff := DiffInstances(desiredGCP, a.actual); instanceDiff.HasDiff() {
 		updateOp.RecordUpdatingEvent()
+		instanceDiff.Object = u
 
 		{
 			structuredreporting.ReportDiff(ctx, instanceDiff)
@@ -728,12 +774,52 @@ func (a *sqlInstanceAdapter) Update(ctx context.Context, updateOp *directbase.Up
 	if err != nil {
 		return fmt.Errorf("updating SQLInstance status failed: %w", err)
 	}
+
+	if err := a.SetLastModifiedCookie(ctx, updateOp, instanceForStatus); err != nil {
+		return err
+	}
+
 	return setStatus(u, status)
+}
+
+func (a *sqlInstanceAdapter) SetLastModifiedCookie(ctx context.Context, op directbase.Operation, actual *api.DatabaseInstance) error {
+	finalDesiredGCP, err := SQLInstanceKRMToGCP(a.desired, actual, a.fieldMeta)
+	if err != nil {
+		return err
+	}
+	finalDesiredProto, err := a.toProto(ctx, finalDesiredGCP)
+	if err != nil {
+		return err
+	}
+	finalActualProto, err := a.toProto(ctx, actual)
+	if err != nil {
+		return err
+	}
+	if err := op.SetLastModifiedCookie(ctx, finalDesiredProto, finalActualProto); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (a *sqlInstanceAdapter) CompareLastModifiedCookie(ctx context.Context, op directbase.Operation, actual *api.DatabaseInstance) (bool, error) {
+	desiredGCP, err := SQLInstanceKRMToGCP(a.desired, actual, a.fieldMeta)
+	if err != nil {
+		return false, err
+	}
+	desiredProto, err := a.toProto(ctx, desiredGCP)
+	if err != nil {
+		return false, err
+	}
+	actualProto, err := a.toProto(ctx, actual)
+	if err != nil {
+		return false, err
+	}
+	return op.CompareLastModifiedCookie(desiredProto, actualProto)
 }
 
 // Delete implements the Adapter interface.
 func (a *sqlInstanceAdapter) Delete(ctx context.Context, deleteOp *directbase.DeleteOperation) (bool, error) {
-	log := klog.FromContext(ctx).WithName(ctrlName)
+	log := klog.FromContext(ctx)
 	log.V(2).Info("deleting SQLInstance", "actual", a.actual)
 
 	op, err := a.sqlInstancesClient.Delete(a.projectID, a.resourceID).Context(ctx).Do()
@@ -779,7 +865,7 @@ func (a *sqlInstanceAdapter) Export(ctx context.Context) (*unstructured.Unstruct
 }
 
 func (a *sqlInstanceAdapter) pollForLROCompletion(ctx context.Context, op *api.Operation, verb string) error {
-	log := klog.FromContext(ctx).WithName(ctrlName)
+	log := klog.FromContext(ctx)
 	var err error
 
 	pollingBackoff := gax.Backoff{
@@ -803,6 +889,48 @@ func (a *sqlInstanceAdapter) pollForLROCompletion(ctx context.Context, op *api.O
 	}
 
 	return nil
+}
+
+func (a *sqlInstanceAdapter) toProto(ctx context.Context, instance *api.DatabaseInstance) (*pb.DatabaseInstance, error) {
+	if instance == nil {
+		return nil, nil
+	}
+
+	// The GCP API Go library often has more fields than our proto.
+	// We marshal to JSON and then unmarshal into the proto, discarding unknown fields.
+	j, err := json.Marshal(instance)
+	if err != nil {
+		return nil, fmt.Errorf("marshalling api to json: %w", err)
+	}
+
+	// Mask out fields that are not in the proto
+	var m map[string]any
+	if err := json.Unmarshal(j, &m); err != nil {
+		return nil, fmt.Errorf("unmarshalling api to map: %w", err)
+	}
+	delete(m, "satisfiesPzi")
+	if settings, ok := m["settings"].(map[string]any); ok {
+		if bc, ok := settings["backupConfiguration"].(map[string]any); ok {
+			delete(bc, "backupTier")
+		}
+	}
+	j, err = json.Marshal(m)
+	if err != nil {
+		return nil, fmt.Errorf("marshalling map to json: %w", err)
+	}
+
+	out := &pb.DatabaseInstance{}
+	unmarshalOptions := protojson.UnmarshalOptions{
+		// We use DiscardUnknown because the GCP API often has more fields than our proto.
+		// For example, satisfiesPzi and backupTier are not in the proto but are in the API.
+		// We explicitly delete some known fields above, but DiscardUnknown is more robust
+		// against new fields being added to the GCP API.
+		DiscardUnknown: true,
+	}
+	if err := unmarshalOptions.Unmarshal(j, out); err != nil {
+		return nil, fmt.Errorf("unmarshalling json to proto %v: %w", out.ProtoReflect().Descriptor().FullName(), err)
+	}
+	return out, nil
 }
 
 func setStatus(u *unstructured.Unstructured, typedStatus any) error {

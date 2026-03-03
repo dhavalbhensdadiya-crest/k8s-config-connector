@@ -98,7 +98,9 @@ func (m *modelIAMPartialPolicy) IAMAdapterForObject(ctx context.Context, reader 
 	}, nil
 }
 
-func (m *modelIAMPartialPolicy) AdapterForObject(ctx context.Context, reader client.Reader, u *unstructured.Unstructured) (directbase.Adapter, error) {
+func (m *modelIAMPartialPolicy) AdapterForObject(ctx context.Context, op *directbase.AdapterForObjectOperation) (directbase.Adapter, error) {
+	_ = op.GetUnstructured()
+	_ = op.Reader
 	return nil, fmt.Errorf("AdapterForObject not supported for IAMPartialPolicy, call IAMAdapterForObject")
 }
 
@@ -118,7 +120,7 @@ type IAMPartialPolicyAdapter struct {
 var _ directbase.Adapter = &IAMPartialPolicyAdapter{}
 
 func getLogger(ctx context.Context) logr.Logger {
-	return klog.FromContext(ctx).WithName(iamPartialPolicyControllerName).WithValues("controllerType", "direct")
+	return klog.FromContext(ctx).WithValues("controllerType", "direct")
 }
 
 func (a *IAMPartialPolicyAdapter) Find(ctx context.Context) (bool, error) {

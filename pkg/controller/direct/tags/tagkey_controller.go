@@ -35,7 +35,6 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/klog/v2"
-	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 func init() {
@@ -52,7 +51,9 @@ type TagsTagKeyModel struct {
 	config *config.ControllerConfig
 }
 
-func (m *TagsTagKeyModel) AdapterForObject(ctx context.Context, reader client.Reader, u *unstructured.Unstructured) (directbase.Adapter, error) {
+func (m *TagsTagKeyModel) AdapterForObject(ctx context.Context, op *directbase.AdapterForObjectOperation) (directbase.Adapter, error) {
+	u := op.GetUnstructured()
+	reader := op.Reader
 	tagKeysClient, err := newTagKeysClient(ctx, m.config)
 	if err != nil {
 		return nil, err
@@ -315,8 +316,6 @@ func (a *TagsTagKeyAdapter) Delete(ctx context.Context, deleteOp *directbase.Del
 }
 
 func (a *TagsTagKeyAdapter) changedFields(ctx context.Context) (*structuredreporting.Diff, *fieldmaskpb.FieldMask, error) {
-	log := klog.FromContext(ctx)
-
 	// Compute the actual with only the spec fields populated.
 	var actualMasked protoreflect.Message
 	{
@@ -333,21 +332,5 @@ func (a *TagsTagKeyAdapter) changedFields(ctx context.Context) (*structuredrepor
 		actualMasked = specProto.ProtoReflect()
 	}
 
-	diff := &structuredreporting.Diff{}
-
-	var paths []string
-	fields := actualMasked.Type().Descriptor().Fields()
-	for i := 0; i < fields.Len(); i++ {
-		path := string(fields.Get(i).Name())
-		fieldDiff, err := fieldHasChanged(path, a.desired.ProtoReflect(), actualMasked)
-		if err != nil {
-			log.Error(err, "error determining if field has changed", "field", path)
-			// If we can't determine if the field has changed, include it in the update.
-		} else if fieldDiff == nil {
-			continue
-		}
-		diff.AddField(fieldDiff.FieldPath, fieldDiff.ActualValue, fieldDiff.DesiredValue)
-		paths = append(paths, fieldDiff.FieldPath)
-	}
-	return diff, &fieldmaskpb.FieldMask{Paths: paths}, nil
+	return buildDiff(ctx, a.desired.ProtoReflect(), actualMasked)
 }
